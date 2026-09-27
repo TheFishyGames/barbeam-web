@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>BarBeam Admin</title>
+<style>
+:root{--bg:#f7f2f2;--card:#fff;--text:#1d1416;--muted:#6b5c60;--accent:#c8102e;--line:#e6dcde;--ok:#1a7f4b;--warn:#b26a00}
+@media (prefers-color-scheme:dark){:root{--bg:#160c0e;--card:#211316;--text:#f4eaec;--muted:#b7a5aa;--accent:#ff4d66;--line:#3a2529;--ok:#4cc38a;--warn:#f0b04a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;max-width:980px;margin:0 auto}
+header b{color:var(--accent);font-size:20px;letter-spacing:-.3px}header span{color:var(--muted);font-size:13px}
+main{max-width:980px;margin:0 auto;padding:0 20px 60px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+h2{font-size:16px;margin:0 0 10px}h3{font-size:15px;margin:0}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.5px}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+button{font:inherit;border:0;border-radius:10px;padding:9px 14px;cursor:pointer;background:var(--accent);color:#fff;font-weight:600}
+button.sec{background:transparent;color:var(--text);border:1px solid var(--line)}button.danger{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+.muted{color:var(--muted);font-size:13px}.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:700}
+.pill.ok{background:rgba(26,127,75,.14);color:var(--ok)}.pill.warn{background:rgba(178,106,0,.15);color:var(--warn)}
+.cust{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}td,th{text-align:left;padding:7px 4px;border-top:1px solid var(--line)}th{color:var(--muted);font-size:12px;font-weight:600;border-top:0}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:11px 16px;border-radius:12px;max-width:90vw;display:none;z-index:9}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:8}
+#modal .box{background:var(--card);border-radius:16px;padding:20px;max-width:440px;width:100%}
+.hide{display:none}
+</style></head>
+<body>
+<header><b>BarBeam Admin</b><span id="who"></span></header>
+<main>
+ <div id="login" class="card" style="max-width:420px;margin:40px auto">
+  <h2>Sign in</h2><p class="muted">Use your BarBeam account. Only accounts on the admin list get in.</p>
+  <label for="em">Email</label><input id="em" type="email" autocomplete="username">
+  <label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">
+  <div style="margin-top:14px"><button id="go">Sign in</button></div>
+ </div>
+ <div id="app" class="hide">
+  <div class="card">
+   <h2>Set up a new bar</h2>
+   <p class="muted">The owner has to create an account in the app first. If the customer name already exists, the bar is added to that customer.</p>
+   <div class="row">
+    <div><label for="o_email">Owner's email</label><input id="o_email" type="email"></div>
+    <div><label for="o_org">Customer (company) name</label><input id="o_org"></div>
+    <div><label for="o_bar">Bar name</label><input id="o_bar"></div>
+    <div><label for="o_tz">Time zone</label><select id="o_tz">
+      <option>America/Chicago</option><option>America/New_York</option><option>America/Denver</option><option>America/Phoenix</option><option>America/Los_Angeles</option><option>America/Anchorage</option><option>Pacific/Honolulu</option></select></div>
+    <div><label for="o_cap">Max capacity (optional)</label><input id="o_cap" type="number" min="1"></div>
+   </div>
+   <div style="margin-top:14px"><button id="onboard">Set up bar</button></div>
+  </div>
+  <h2 style="margin:22px 2px 10px">Customers</h2>
+  <div id="list"></div>
+ </div>
+</main>
+<div id="toast"></div>
+<div id="modal"><div class="box" id="mbox"></div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL='https://nycnkkdrucrsvfmmgjkd.supabase.co';
+const SUPABASE_KEY='sb_publishable_I9HcvB_9wpGmH8HTN25XzA_qaNia84A';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg){const t=$('toast');t.textContent=msg;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',5000)}
+function modal(html){$('mbox').innerHTML=html;$('modal').style.display='flex'}
+function closeModal(){$('modal').style.display='none'}
+const when=d=>d?new Date(d).toLocaleString():'never';
+
+async function enter(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session){$('login').classList.remove('hide');$('app').classList.add('hide');return}
+  const {data:ok,error}=await sb.rpc('is_platform_admin');
+  if(error||!ok){await sb.auth.signOut();toast('That account is not on the admin list.');$('login').classList.remove('hide');$('app').classList.add('hide');return}
+  $('login').classList.add('hide');$('app').classList.remove('hide');
+  $('who').innerHTML=esc(session.user.email)+' · <a href="#" id="out" style="color:inherit">sign out</a>';
+  $('out').onclick=async e=>{e.preventDefault();await sb.auth.signOut();location.reload()};
+  load();
+}
+$('go').onclick=async()=>{
+  const {error}=await sb.auth.signInWithPassword({email:$('em').value.trim(),password:$('pw').value});
+  $('pw').value='';
+  if(error){toast(error.message);return}
+  enter();
+};
+$('pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('go').click()});
+
+let customers=[];
+async function load(){
+  const {data,error}=await sb.rpc('admin_list_customers');
+  if(error){toast(error.message);return}
+  customers=data||[];
+  $('list').innerHTML=customers.length?customers.map((c,i)=>`
+   <div class="card">
+    <div class="cust">
+     <div>
+      <h3>${esc(c.name)} ${c.suspended_at?'<span class="pill warn">Suspended</span>':'<span class="pill ok">Active</span>'}</h3>
+      <div class="muted">Owner${c.owners.length===1?'':'s'}: ${esc(c.owners.join(', ')||'none')} · since ${esc(new Date(c.created_at).toLocaleDateString())}</div>
+      ${c.suspended_at?`<div class="muted">Suspended ${esc(when(c.suspended_at))}${c.suspended_reason?': '+esc(c.suspended_reason):''}</div>`:''}
+     </div>
+     <div class="actions">
+      <button class="sec" data-a="export" data-i="${i}">Export data</button>
+      ${c.suspended_at?`<button data-a="reinstate" data-i="${i}">Reinstate</button>`:`<button class="sec" data-a="suspend" data-i="${i}">Suspend</button>`}
+      <button class="danger" data-a="delete" data-i="${i}">Delete…</button>
+     </div>
+    </div>
+    <table><tr><th>Bar</th><th>People</th><th>Shifts, next 30 days</th><th>Last chat message</th></tr>
+     ${c.bars.map(b=>`<tr><td>${esc(b.name)}</td><td>${b.people}</td><td>${b.shifts_next_30_days}</td><td>${esc(when(b.last_message_at))}</td></tr>`).join('')}
+    </table>
+   </div>`).join(''):'<div class="card muted">No customers yet.</div>';
+}
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('button[data-a]'); if(!b) return;
+  const c=customers[+b.dataset.i], a=b.dataset.a;
+  if(a==='suspend') modal(`<h2>Suspend ${esc(c.name)}?</h2><p class="muted">Their people can still sign in and will see a notice, but cannot see or change any schedule, chat or data until you reinstate them. Nothing is deleted.</p><label for="why">Reason (only you see this)</label><input id="why" placeholder="e.g. unpaid invoice"><div class="actions" style="margin-top:14px"><button id="yes">Suspend</button><button class="sec" onclick="closeModal()">Cancel</button></div>`),
+    $('yes').onclick=async()=>{const {error}=await sb.rpc('admin_set_suspended',{p_org:c.id,p_suspended:true,p_reason:$('why').value});closeModal();toast(error?error.message:c.name+' is suspended.');load()};
+  if(a==='reinstate'){const {error}=await sb.rpc('admin_set_suspended',{p_org:c.id,p_suspended:false});toast(error?error.message:c.name+' is active again.');load()}
+  if(a==='export'){b.disabled=true;const {data,error}=await sb.rpc('admin_export_org',{p_org:c.id});b.disabled=false;
+    if(error){toast(error.message);return}
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob);
+    const l=document.createElement('a');l.href=u;l.download=c.name.replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'-export-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(l);l.click();l.remove();URL.revokeObjectURL(u);toast('Export downloaded.')}
+  if(a==='delete') modal(`<h2>Delete ${esc(c.name)} for good?</h2><p class="muted">This permanently removes the customer, all their bars, schedules, chats and records. It cannot be undone. Export their data first. People's own accounts are kept.</p><label for="cn">Type the customer name to confirm</label><input id="cn" autocomplete="off"><div class="actions" style="margin-top:14px"><button class="danger" id="yes" disabled>Delete forever</button><button class="sec" onclick="closeModal()">Cancel</button></div>`),
+    $('cn').oninput=()=>{$('yes').disabled=$('cn').value!==c.name},
+    $('yes').onclick=async()=>{const {error}=await sb.rpc('admin_delete_org',{p_org:c.id,p_confirm_name:$('cn').value});closeModal();toast(error?error.message:c.name+' was deleted.');load()};
+});
+$('onboard').onclick=async()=>{
+  const cap=$('o_cap').value.trim();
+  const {error}=await sb.rpc('admin_onboard_bar',{p_owner_email:$('o_email').value,p_org_name:$('o_org').value,p_bar_name:$('o_bar').value,p_timezone:$('o_tz').value,p_max_capacity:cap?+cap:null});
+  if(error){toast(error.message);return}
+  toast('Bar set up. The owner can now sign in and see it.');['o_email','o_org','o_bar','o_cap'].forEach(i=>$(i).value='');load();
+};
+sb.auth.onAuthStateChange(()=>{});
+enter();
+</script></body></html>
