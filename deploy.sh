@@ -4,7 +4,7 @@
 set -euo pipefail
 WEBOUT="$1"
 ADMIN="$2"
-find . -mindepth 1 -maxdepth 1 ! -name .git ! -name CNAME -exec rm -rf {} +
+find . -mindepth 1 -maxdepth 1 ! -name .git ! -name CNAME ! -name deploy.sh -exec rm -rf {} +
 cp -r "$WEBOUT"/. .
 cp "$ADMIN" admin.html
 cp index.html 404.html
