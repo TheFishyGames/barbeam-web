@@ -5,7 +5,15 @@
 <title>BarBeam Admin</title>
 <style>
 :root{--bg:#f7f2f2;--card:#fff;--text:#1d1416;--muted:#6b5c60;--accent:#c8102e;--line:#e6dcde;--ok:#1a7f4b;--warn:#b26a00}
-@media (prefers-color-scheme:dark){:root{--bg:#160c0e;--card:#211316;--text:#f4eaec;--muted:#b7a5aa;--accent:#ff4d66;--line:#3a2529;--ok:#4cc38a;--warn:#f0b04a}}
+@media (prefers-color-scheme:dark){:root:not([data-theme]){--bg:#160c0e;--card:#211316;--text:#f4eaec;--muted:#b7a5aa;--accent:#ff4d66;--line:#3a2529;--ok:#4cc38a;--warn:#f0b04a}}
+:root[data-theme=light]{--bg:#f7f2f2;--card:#fff;--text:#1d1416;--muted:#6b5c60;--accent:#c8102e;--line:#e6dcde;--ok:#1a7f4b;--warn:#b26a00}
+:root[data-theme=dark]{--bg:#160c0e;--card:#211316;--text:#f4eaec;--muted:#b7a5aa;--accent:#ff4d66;--line:#3a2529;--ok:#4cc38a;--warn:#f0b04a}
+:root[data-theme=blue]{--bg:#eaf3fd;--card:#fff;--text:#0f2238;--muted:#547089;--accent:#1f7ae0;--line:#cfe0f2;--ok:#1a7f4b;--warn:#b26a00}
+.themes{display:inline-flex;border:1px solid var(--line);border-radius:99px;overflow:hidden;margin-right:12px;vertical-align:middle}
+.themes button{background:transparent;color:var(--muted);border-radius:0;padding:4px 11px;font-size:12px;font-weight:600}
+.themes button.on{background:var(--accent);color:#fff}
+textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}
+.pill.sup{background:rgba(31,122,224,.15);color:var(--accent)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;max-width:980px;margin:0 auto}
 header b{color:var(--accent);font-size:20px;letter-spacing:-.3px}header span{color:var(--muted);font-size:13px}
@@ -29,7 +37,7 @@ table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}td,th{t
 .hide{display:none}
 </style></head>
 <body>
-<header><b>BarBeam Admin</b><span id="who"></span></header>
+<header><b>BarBeam Admin</b><span><span class="themes" id="themes"><button data-t="light">Light</button><button data-t="dark">Dark</button><button data-t="blue">Blue</button></span><span id="who"></span></span></header>
 <main>
  <div id="login" class="card" style="max-width:420px;margin:40px auto">
   <h2>Sign in</h2><p class="muted">Use your BarBeam account. Only accounts on the admin list get in.</p>
@@ -51,6 +59,7 @@ table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}td,th{t
    </div>
    <div style="margin-top:14px"><button id="onboard">Set up bar</button></div>
   </div>
+  <div id="supcard"></div>
   <h2 style="margin:22px 2px 10px">Customers</h2>
   <div id="list"></div>
  </div>
@@ -67,6 +76,9 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 function toast(msg){const t=$('toast');t.textContent=msg;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',5000)}
 function modal(html){$('mbox').innerHTML=html;$('modal').style.display='flex'}
 function closeModal(){$('modal').style.display='none'}
+function setTheme(t){try{localStorage.setItem('bbTheme',t)}catch(e){}document.documentElement.setAttribute('data-theme',t);document.querySelectorAll('#themes button').forEach(b=>b.classList.toggle('on',b.dataset.t===t))}
+(function(){let t=null;try{t=localStorage.getItem('bbTheme')}catch(e){}if(!t)t=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';setTheme(t)})();
+document.querySelectorAll('#themes button').forEach(b=>b.onclick=()=>setTheme(b.dataset.t));
 const when=d=>d?new Date(d).toLocaleString():'never';
 
 async function enter(){
@@ -87,11 +99,14 @@ $('go').onclick=async()=>{
 };
 $('pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('go').click()});
 
-let customers=[];
+let customers=[],sup={active:[],recent:[]};
+const sessOf=id=>sup.active.find(x=>x.org_id===id);
 async function load(){
   const {data,error}=await sb.rpc('admin_list_customers');
   if(error){toast(error.message);return}
   customers=data||[];
+  const so=await sb.rpc('admin_support_overview');sup=so.error?{active:[],recent:[]}:so.data;
+  renderSup();
   $('list').innerHTML=customers.length?customers.map((c,i)=>`
    <div class="card">
     <div class="cust">
@@ -101,6 +116,7 @@ async function load(){
       ${c.suspended_at?`<div class="muted">Suspended ${esc(when(c.suspended_at))}${c.suspended_reason?': '+esc(c.suspended_reason):''}</div>`:''}
      </div>
      <div class="actions">
+      ${sessOf(c.id)?`<button data-a="endsup" data-i="${i}">End support</button>`:`<button class="sec" data-a="support" data-i="${i}">Support…</button>`}
       <button class="sec" data-a="export" data-i="${i}">Export data</button>
       ${c.suspended_at?`<button data-a="reinstate" data-i="${i}">Reinstate</button>`:`<button class="sec" data-a="suspend" data-i="${i}">Suspend</button>`}
       <button class="danger" data-a="delete" data-i="${i}">Delete…</button>
@@ -111,9 +127,18 @@ async function load(){
     </table>
    </div>`).join(''):'<div class="card muted">No customers yet.</div>';
 }
+function renderSup(){
+  const rows=(sup.recent||[]).map(r=>`<tr><td>${esc(r.org_name)}</td><td>${esc(r.mode)}</td><td>${esc(r.reason)}</td><td>${esc(when(r.started_at))}</td><td>${esc(when(r.ended_at))}</td></tr>`).join('');
+  $('supcard').innerHTML=`<div class="card"><h2>Support sessions</h2>
+   ${(sup.active||[]).length?`<p>${sup.active.map(a=>`<span class="pill sup">${esc(a.org_name)}: ${esc(a.mode)} until ${esc(new Date(a.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}))}</span>`).join(' ')}</p><p class="muted">While a session is open, sign in to the BarBeam app or <a href="./" style="color:var(--accent)">web app</a> with your admin account and pick that customer's bar. Owners cannot see any of this.</p>`:'<p class="muted">No session open. Use "Support…" on a customer below.</p>'}
+   ${rows?`<table><tr><th>Customer</th><th>Mode</th><th>Reason</th><th>Started</th><th>Ended</th></tr>${rows}</table>`:''}</div>`;
+}
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button[data-a]'); if(!b) return;
   const c=customers[+b.dataset.i], a=b.dataset.a;
+  if(a==='support') modal(`<h2>Open ${esc(c.name)}</h2><p class="muted">Only you can see this. It is timed, needs a reason, and is written to your private log.</p><label>Access</label><select id="sm"><option value="view">View only (default)</option><option value="edit">View and edit</option></select><label for="sr">Reason</label><textarea id="sr" rows="2" placeholder="e.g. helping with schedule builder problem"></textarea><label for="smin">Minutes (5 to 480)</label><input id="smin" type="number" min="5" max="480" value="60"><div class="actions" style="margin-top:14px"><button id="yes">Open</button><button class="sec" onclick="closeModal()">Cancel</button></div>`),
+    $('yes').onclick=async()=>{const {error}=await sb.rpc('admin_start_support',{p_org:c.id,p_edit:$('sm').value==='edit',p_reason:$('sr').value,p_minutes:+$('smin').value||60});if(error){toast(error.message);return}closeModal();toast('Support session open for '+c.name+'.');load()};
+  if(a==='endsup'){const {error}=await sb.rpc('admin_end_support',{p_org:c.id});toast(error?error.message:'Support session ended.');load()}
   if(a==='suspend') modal(`<h2>Suspend ${esc(c.name)}?</h2><p class="muted">Their people can still sign in and will see a notice, but cannot see or change any schedule, chat or data until you reinstate them. Nothing is deleted.</p><label for="why">Reason (only you see this)</label><input id="why" placeholder="e.g. unpaid invoice"><div class="actions" style="margin-top:14px"><button id="yes">Suspend</button><button class="sec" onclick="closeModal()">Cancel</button></div>`),
     $('yes').onclick=async()=>{const {error}=await sb.rpc('admin_set_suspended',{p_org:c.id,p_suspended:true,p_reason:$('why').value});closeModal();toast(error?error.message:c.name+' is suspended.');load()};
   if(a==='reinstate'){const {error}=await sb.rpc('admin_set_suspended',{p_org:c.id,p_suspended:false});toast(error?error.message:c.name+' is active again.');load()}
